@@ -11,7 +11,7 @@ final class WindowController: NSObject, NSWindowDelegate, ObservableObject {
     @Published private(set) var isPinned = UserDefaults.standard.bool(forKey: "DailyDot.pinned")
     private var animating = false
     private let dotSize: CGFloat = 40
-    private let expandedSize = NSSize(width: 390, height: 550)
+    private let expandedSize = NSSize(width: 370, height: 420)
     private let inset: CGFloat = 20
     private var expanded = false
     private var anchor = NSPoint.zero // Circle center in global screen coordinates.
@@ -268,7 +268,7 @@ private final class DotView: NSView {
     private var dragged = false
     override func draw(_ dirtyRect: NSRect) {
         // Neutral solid gray in both states.
-        NSColor(calibratedWhite: 0.48, alpha: 1).setFill()
+        NSColor(calibratedWhite: 0.65, alpha: 1).setFill()
         NSBezierPath(ovalIn: bounds).fill()
     }
     override func mouseDown(with event: NSEvent) {

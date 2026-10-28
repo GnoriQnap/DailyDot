@@ -46,11 +46,12 @@ struct ContentView: View {
                             HStack(spacing: 13) {
                                 RoundedRectangle(cornerRadius: 5).stroke(.black.opacity(0.17), lineWidth: 1.3).frame(width: 20, height: 20)
                                 TextField("Add new todo", text: $draft)
-                                    .textFieldStyle(.plain).font(.system(size: 16, design: .monospaced))
+                                    .textFieldStyle(.plain).font(.system(size: 14, design: .monospaced))
                                     .focused($focused).onSubmit { commit() }
                                     .onExitCommand { cancel() }
                             }
-                            .padding(.horizontal, 10).padding(.vertical, 12).id("editor")
+                            .frame(minHeight: 28)
+                            .padding(.horizontal, 10).padding(.vertical, 3.5).id("editor")
                         }
                         if store.tasks.isEmpty && !editing {
                             Text("留一点空间，给今天。")
@@ -77,7 +78,7 @@ struct ContentView: View {
         .foregroundStyle(ink)
         .background {
             if controller.isPinned { Color.white.opacity(0.24) }
-            else { GlassBackground() }
+            else { Color.white }
         }
         .clipShape(RoundedRectangle(cornerRadius: 25))
         .overlay(RoundedRectangle(cornerRadius: 25).stroke(.white.opacity(0.65), lineWidth: 1).allowsHitTesting(false))
@@ -102,7 +103,7 @@ private struct TaskRow: View {
     let delete: () -> Void
     @State private var hovered = false
     var body: some View {
-        HStack(alignment: .top, spacing: 13) {
+        HStack(alignment: .center, spacing: 13) {
             Button(action: toggle) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 5).stroke(task.isCompleted ? Color.black.opacity(0.32) : .black.opacity(0.27), lineWidth: 1.3)
@@ -110,7 +111,7 @@ private struct TaskRow: View {
                 }.frame(width: 20, height: 20)
                     .padding(4).contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityLabel(task.isCompleted ? "标记为未完成" : "完成任务")
-            Text(task.title).font(.system(size: 16, design: .monospaced))
+            Text(task.title).font(.system(size: 14, design: .monospaced))
                 .strikethrough(task.isCompleted, color: Color.gray.opacity(0.55))
                 .foregroundStyle(task.isCompleted ? Color.gray.opacity(0.55) : Color.black.opacity(0.78))
                 .frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
@@ -118,22 +119,11 @@ private struct TaskRow: View {
                 .buttonStyle(.plain).opacity(hovered ? 0.65 : 0).disabled(!hovered).help("删除任务")
                 .accessibilityLabel("删除 \(task.title)")
         }
-        .padding(.horizontal, 10).padding(.vertical, 11)
+        .frame(minHeight: 28, alignment: .top)
+        .padding(.horizontal, 10).padding(.vertical, 3.5)
         .background(RoundedRectangle(cornerRadius: 9).fill(.white.opacity(hovered ? 0.22 : 0)))
         .onHover { hovered = $0 }
     }
-}
-
-private struct GlassBackground: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .underWindowBackground
-        view.blendingMode = .behindWindow
-        view.state = .active
-        view.appearance = NSAppearance(named: .aqua)
-        return view
-    }
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
 
 extension Notification.Name { static let dailyDotCommit = Notification.Name("DailyDot.commit") }
