@@ -1,0 +1,11 @@
+.DS_Store
+/work/
+/outputs/*.app/
+/outputs/*.zip
+/outputs/*.mp4
+/outputs/DailyDot/*.log
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+*.xcuserstate
