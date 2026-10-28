@@ -58,6 +58,27 @@ final class TaskStore: ObservableObject {
         save()
     }
 
+    func rename(_ id: UUID, title: String) {
+        refreshDay()
+        let clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty,
+              let index = archive.days[day]?.firstIndex(where: { $0.id == id }) else { return }
+        archive.days[day]![index].title = clean
+        save()
+    }
+
+    // The slot is an insertion boundary in the original, unmodified array.
+    func move(_ id: UUID, toInsertionIndex slot: Int) {
+        refreshDay()
+        guard var tasks = archive.days[day], (0...tasks.count).contains(slot),
+              let source = tasks.firstIndex(where: { $0.id == id }) else { return }
+        let task = tasks.remove(at: source)
+        let destination = slot > source ? slot - 1 : slot
+        tasks.insert(task, at: destination)
+        archive.days[day] = tasks
+        save()
+    }
+
     private func save() {
         if let data = try? JSONEncoder().encode(archive) { defaults.set(data, forKey: key) }
     }
