@@ -191,10 +191,12 @@ private struct TaskRow: View {
     let finishEditing: (Bool) -> Void
     let beginDrag: () -> Void
     let endDrag: () -> Void
+    var previewMode = false
     @State private var hovered = false
+    private var highlighted: Bool { hovered || previewMode }
 
     private var dragSurface: some View {
-        TaskDragSurface(task: task, beginEditing: beginEditing, beginDrag: beginDrag, endDrag: endDrag, hoverChanged: { hovered = $0 })
+        TaskDragSurface(task: task, beginEditing: beginEditing, beginDrag: beginDrag, endDrag: endDrag, hoverChanged: { hovered = $0 }, makePreview: makeDragPreview)
     }
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
@@ -202,8 +204,8 @@ private struct TaskRow: View {
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.gray.opacity(0.65))
                 .frame(width: 10, height: 28)
-                .opacity(hovered && !isEditing ? 1 : 0)
-                .overlay { if !isEditing { dragSurface } }
+                .opacity(highlighted && !isEditing ? 1 : 0)
+                .overlay { if !isEditing && !previewMode { dragSurface } }
                 .help("拖动排序")
             Button(action: toggle) {
                 ZStack {
@@ -213,6 +215,7 @@ private struct TaskRow: View {
                     .padding(4).contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityLabel(task.isCompleted ? "标记为未完成" : "完成任务")
             Text(task.title).font(.system(size: 14, design: .monospaced))
+                .fixedSize(horizontal: false, vertical: true)
                 .strikethrough(task.isCompleted, color: Color.gray.opacity(0.55))
                 .foregroundStyle(task.isCompleted ? Color.gray.opacity(0.55) : Color.black.opacity(0.78))
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -228,21 +231,43 @@ private struct TaskRow: View {
                                     .padding(.horizontal, -5).padding(.vertical, -4)
                                     .allowsHitTesting(false)
                             }
-                    } else { dragSurface }
+                    } else if !previewMode { dragSurface }
                 }
             Button(action: delete) { Image(systemName: "trash").font(.system(size: 13)).frame(width: 24, height: 22) }
-                .buttonStyle(.plain).opacity(hovered ? 0.65 : 0).disabled(!hovered).help("删除任务")
+                .buttonStyle(.plain).opacity(highlighted ? 0.65 : 0).disabled(!highlighted).help("删除任务")
                 .accessibilityLabel("删除 \(task.title)")
         }
         .frame(minHeight: 28, alignment: .top)
         .padding(.horizontal, 10).padding(.vertical, 3.5)
-        .background(RoundedRectangle(cornerRadius: 9).fill(.white.opacity(hovered ? 0.85 : 0)))
-        .shadow(color: .black.opacity(hovered && !isEditing ? 0.08 : 0), radius: 3, y: 1)
-        .offset(y: hovered && !isEditing ? -1 : 0)
+        .background { if !previewMode { TaskRowCaptureAnchor(taskID: task.id) } }
+        .background(RoundedRectangle(cornerRadius: 9).fill(.white.opacity(highlighted ? 0.85 : 0)))
+        .shadow(color: .black.opacity(highlighted && !isEditing ? 0.08 : 0), radius: 3, y: 1)
+        .offset(y: highlighted && !isEditing && !previewMode ? -1 : 0)
         .opacity(isDragging ? 0.25 : 1)
         .animation(.easeInOut(duration: 0.14), value: hovered)
         .onHover { hovered = $0 }
     }
+
+    private func makeDragPreview(size: CGSize, scale: CGFloat) -> NSImage? {
+        // Render the same SwiftUI row, with exactly the measured width/height,
+        // font, wrapping, checkbox, handle, corner radius and hover shadow.
+        let inset = TaskDragPreviewMetrics.shadowInset
+        let preview = TaskRow(task: task, isEditing: false, isDragging: false,
+                              draft: .constant(""), toggle: {}, delete: {},
+                              beginEditing: {}, finishEditing: { _ in },
+                              beginDrag: {}, endDrag: {}, previewMode: true)
+            .frame(width: size.width, height: size.height)
+            .padding(inset)
+            .environment(\.colorScheme, .light)
+            .environment(\.displayScale, scale)
+        let imageSize = CGSize(width: size.width + inset * 2, height: size.height + inset * 2)
+        let renderer = ImageRenderer(content: preview)
+        renderer.proposedSize = ProposedViewSize(imageSize)
+        renderer.scale = scale
+        guard let cgImage = renderer.cgImage else { return nil }
+        return NSImage(cgImage: cgImage, size: imageSize)
+    }
+
 }
 
 private struct TaskFramesKey: PreferenceKey {

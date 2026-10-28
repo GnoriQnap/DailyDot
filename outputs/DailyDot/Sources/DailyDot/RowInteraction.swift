@@ -9,6 +9,7 @@ struct TaskDragSurface: NSViewRepresentable {
     let beginDrag: () -> Void
     let endDrag: () -> Void
     let hoverChanged: (Bool) -> Void
+    let makePreview: (CGSize, CGFloat) -> NSImage?
 
     func makeNSView(context: Context) -> DragSurfaceView { DragSurfaceView() }
     func updateNSView(_ view: DragSurfaceView, context: Context) {
@@ -17,6 +18,7 @@ struct TaskDragSurface: NSViewRepresentable {
         view.beginDrag = beginDrag
         view.endDrag = endDrag
         view.hoverChanged = hoverChanged
+        view.makePreview = makePreview
     }
 }
 
@@ -26,6 +28,7 @@ final class DragSurfaceView: NSView, NSDraggingSource {
     var beginDrag: (() -> Void)?
     var endDrag: (() -> Void)?
     var hoverChanged: ((Bool) -> Void)?
+    var makePreview: ((CGSize, CGFloat) -> NSImage?)?
     private var hoverTracking: NSTrackingArea?
     private var origin = NSPoint.zero
     private var started = false
@@ -54,31 +57,29 @@ final class DragSurfaceView: NSView, NSDraggingSource {
     override func mouseDragged(with event: NSEvent) {
         guard !started, let task,
               hypot(event.locationInWindow.x - origin.x, event.locationInWindow.y - origin.y) >= 6 else { return }
+        // Measure the entire row, not the text/handle region receiving the drag.
+        guard let anchor = rowAnchor(), let window,
+              let image = makePreview?(anchor.bounds.size, window.backingScaleFactor) else { return }
+        let rowRect = convert(anchor.bounds, from: anchor)
+        let start = convert(origin, from: nil)
+        let current = convert(event.locationInWindow, from: nil)
+        let frame = rowRect.insetBy(dx: -TaskDragPreviewMetrics.shadowInset, dy: -TaskDragPreviewMetrics.shadowInset)
+            .offsetBy(dx: current.x - start.x, dy: current.y - start.y)
         started = true
+        // Capture/render at full opacity before dimming the source placeholder.
         beginDrag?()
         let item = NSPasteboardItem()
         item.setString(task.id.uuidString, forType: .string)
         let draggingItem = NSDraggingItem(pasteboardWriter: item)
-        let size = NSSize(width: max(160, bounds.width) + 12, height: 47)
-        let image = NSImage(size: size)
-        image.lockFocus()
-        NSGraphicsContext.saveGraphicsState()
-        let shadow = NSShadow()
-        shadow.shadowColor = NSColor.black.withAlphaComponent(0.14)
-        shadow.shadowBlurRadius = 4
-        shadow.shadowOffset = NSSize(width: 0, height: -2)
-        shadow.set()
-        NSColor.white.withAlphaComponent(0.94).setFill()
-        NSBezierPath(roundedRect: NSRect(origin: .zero, size: size).insetBy(dx: 6, dy: 6), xRadius: 7, yRadius: 7).fill()
-        NSGraphicsContext.restoreGraphicsState()
-        (task.title as NSString).draw(in: NSRect(x: 16, y: 14, width: size.width - 32, height: 20), withAttributes: [
-            .font: NSFont.monospacedSystemFont(ofSize: 14, weight: .regular),
-            .foregroundColor: task.isCompleted ? NSColor.gray : NSColor.labelColor,
-            .strikethroughStyle: task.isCompleted ? NSUnderlineStyle.single.rawValue : 0
-        ])
-        image.unlockFocus()
-        let location = convert(event.locationInWindow, from: nil)
-        draggingItem.setDraggingFrame(NSRect(x: location.x - min(location.x, size.width / 2), y: location.y - 17.5, width: size.width, height: size.height), contents: image)
+        draggingItem.draggingFrame = frame
+        // A custom component preserves the full row instead of treating it as
+        // a standard icon thumbnail with system thumbnail sizing.
+        draggingItem.imageComponentsProvider = {
+            let component = NSDraggingImageComponent(key: .init(rawValue: "DailyDot.taskRow"))
+            component.contents = image
+            component.frame = NSRect(origin: .zero, size: frame.size)
+            return [component]
+        }
         let session = beginDraggingSession(with: [draggingItem], event: event, source: self)
         session.animatesToStartingPositionsOnCancelOrFail = true
         scrollTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in self?.scrollNearEdge() }
@@ -90,6 +91,17 @@ final class DragSurfaceView: NSView, NSDraggingSource {
         scrollTimer?.invalidate(); scrollTimer = nil
         started = false
         endDrag?()
+    }
+    private func rowAnchor() -> TaskRowCaptureView? {
+        guard let id = task?.id else { return nil }
+        var root: NSView = self
+        while let parent = root.superview { root = parent }
+        func find(in view: NSView) -> TaskRowCaptureView? {
+            if let anchor = view as? TaskRowCaptureView, anchor.taskID == id { return anchor }
+            for child in view.subviews { if let match = find(in: child) { return match } }
+            return nil
+        }
+        return find(in: root)
     }
     private func scrollNearEdge() {
         guard let scroll = enclosingScrollView, let window, let document = scroll.documentView else { return }
@@ -103,6 +115,21 @@ final class DragSurfaceView: NSView, NSDraggingSource {
         scroll.reflectScrolledClipView(clip)
     }
     deinit { scrollTimer?.invalidate() }
+}
+
+enum TaskDragPreviewMetrics {
+    static let shadowInset: CGFloat = 6
+}
+
+/// Provides the real full-row bounds without intercepting checkbox/text events.
+struct TaskRowCaptureAnchor: NSViewRepresentable {
+    let taskID: UUID
+    func makeNSView(context: Context) -> TaskRowCaptureView { TaskRowCaptureView() }
+    func updateNSView(_ view: TaskRowCaptureView, context: Context) { view.taskID = taskID }
+}
+final class TaskRowCaptureView: NSView {
+    var taskID: UUID?
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 /// Uses the AppKit field editor for reliable focus, select-all, and Esc handling.
